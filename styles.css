@@ -1,0 +1,111 @@
+@keyframes linePulse {
+    0% { stroke: #00f; stroke-width: 2; }
+    50% { stroke: #0ff; stroke-width: 3; }
+    100% { stroke: #00f; stroke-width: 2; }
+  }
+
+  @keyframes barraProgreso {
+    from { width: 100%; }
+    to { width: 0%; }
+  }
+  
+  
+
+body {
+    margin: 0;
+    display: flex;
+    height: 100vh;
+    font-family: sans-serif;
+  }
+  
+  #sidebar {
+    width: 200px;
+    background-color: #f9f9f9;
+    border-right: 2px solid #ccc;
+    padding: 10px;
+  }
+  
+  .device {
+    width: 64px;
+    margin: 15px auto;
+    cursor: grab;
+    display: block;
+  }
+  
+  #workspace {
+    flex-grow: 1;
+    position: relative;
+    background-color: #e6e6e6;
+    overflow: hidden;
+  }
+  
+  .placed-device {
+    position: absolute;
+    width: 64px;
+    cursor: pointer;
+  }
+  
+  svg {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  } 
+  .modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  
+  .modal.hidden {
+    display: none;
+  }
+  
+  .modal-content {
+    background-color: #ffffff;
+    padding: 20px;
+    width: 400px;
+    border-radius: 12px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+    position: relative;
+    text-align: center;
+  }
+  
+  .modal-content h2 {
+    margin-top: 0;
+  }
+  
+  .close-button {
+    position: absolute;
+    top: 10px;
+    right: 20px;
+    font-size: 22px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .tab-item {
+    cursor: pointer;
+    padding: 6px;
+    border-radius: 5px;
+    margin-bottom: 5px;
+  }
+  
+  .tab-item:hover {
+    background-color: #eee;
+  }
+  
+  
+
+
+  
+  

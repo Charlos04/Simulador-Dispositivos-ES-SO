@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Simulador de E/S estilo Packet Tracer</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="sidebar">
+    <h3>Dispositivos</h3>
+    <img src="icono_teclado.png" class="device" draggable="true" data-type="Teclado">
+    <img src="icono_monitor.png" class="device" draggable="true" data-type="Monitor">
+    <img src="icono_impresora.png" class="device" draggable="true" data-type="Impresora">
+    <img src="icono_computadora.png" class="device" draggable="true" data-type="Computadora">
+    <img src="icono_mouse.png" class="device" draggable="true" data-type="Mouse">
+    <img src="icono_usb.png" class="device" draggable="true" data-type="USB">
+    <img src="icono_bocina.png" class="device" draggable="true" data-type="Bocina">
+  </div>
+
+  <div id="workspace">
+    <svg id="connections"></svg>
+  </div>
+
+  <!-- Modal personalizado -->
+<div id="modal-monitor" class="modal hidden">
+    <div class="modal-content">
+      <span class="close-button">&times;</span>
+      <h2>Dispositivos conectados</h2>
+      <div id="modal-body">
+        <!-- Aquí se insertará la información por JS -->
+      </div>
+    </div>
+  </div>
+  
+
+  <script type="module" src="script.js"></script>
+</body>
+
+
+</html>
