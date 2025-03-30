@@ -178,41 +178,25 @@ class Dispositivo {
   }
 
   actualizarUI() {
-    if (this.panelUI && document.body.contains(this.panelUI)) {
-      let oldText = "";
-  
-      // Guardar contenido del textarea si es un teclado
-      if (this instanceof Teclado) {
-        const textarea = this.panelUI.querySelector('textarea');
-        if (textarea) {
-          oldText = textarea.value;
-        }
-      }
-  
-      this.panelUI.innerHTML = this.obtenerInfoInteractiva();
-  
-      // Restaurar contenido después de actualizar
-    if (this instanceof Teclado) {
-      const textarea = this.panelUI.querySelector('textarea');
-      if (textarea) {
-        textarea.value = oldText;
-
-        // ✅ Reasignar oninput sin acumular listeners
-        textarea.oninput = () => handleTecladoInput(this.id, textarea.value);
-      }
-    }
-
-
-  
-    } else {
-      const panelGlobal = document.getElementById("info-panel");
-      if (panelGlobal && (!this.panelUI || this.panelUI === panelGlobal)) {
+    // Actualizar panel principal si existe
+    const panelGlobal = document.getElementById("info-panel");
+    if (panelGlobal && this.panelUI === panelGlobal) {
         panelGlobal.innerHTML = this.obtenerInfoInteractiva();
-      }
     }
-  }
-  
-  
+    
+    // Actualizar panel del modal si está activo
+    if (this.panelUI && this.panelUI.style.display === "block") {
+        this.panelUI.innerHTML = this.obtenerInfoInteractiva();
+    }
+    
+    // Restaurar textarea en teclados
+    if (this instanceof Teclado) {
+        const textarea = this.panelUI?.querySelector('textarea');
+        if (textarea) {
+            textarea.oninput = () => handleTecladoInput(this.id, textarea.value);
+        }
+    }
+}  
   
 
   obtenerInfoInteractiva() {
@@ -313,24 +297,38 @@ class Mouse extends Dispositivo {
 class USB extends Dispositivo {
   constructor(id, elemento) {
     super(id, "Entrada", elemento);
+    this.enUso = false; // Initialize the 'enUso' property
+  }
+
+  abrirArchivo() {
+    this.enUso = true; 
+    console.log("Archivo abierto. USB ahora está en uso.");
+  }
+
+  cerrarArchivo() {
+    this.enUso = false; // Mark the USB as not in use when closing the file
+    console.log("Archivo cerrado. USB ya no está en uso.");
+  }
+
+  expulsar() {
+    // Check if the USB is in use
+    if (this.enUso) {
+      alert("No se puede expulsar el USB. Asegúrate de cerrar todos los archivos abiertos antes de intentar expulsar.");
+      return; // Exit the method if it is in use
+    }
+
+    // Logic to eject the USB
+    console.log("USB expulsado correctamente.");
+    this.actualizarUI();
   }
 
   obtenerInfoInteractiva() {
     return super.obtenerInfoInteractiva() + `
       <button onclick='handleUSBRead("${this.id}")'>Leer USB</button>
+      <button onclick='devices["${this.id}"].abrirArchivo()'>Abrir Archivo</button>
+      <button onclick='devices["${this.id}"].cerrarArchivo()'>Cerrar Archivo</button>
+      <button onclick='devices["${this.id}"].expulsar()'>Expulsar USB</button>
     `;
-  }
-
-  voltajeReposo() { return 0.1; }
-  anchoBandaReposo() { return 0.1; }
-
-  leer() {
-    this.voltaje = 2.0;
-    this.anchoBanda = 5.0;
-    this.actualizarUI();
-    this.elemento.classList.add('active');
-    clearTimeout(this.timerReposo);
-    this.timerReposo = setTimeout(() => this.reposo(), 3000);
   }
 }
 
@@ -410,25 +408,31 @@ class Computadora extends Dispositivo {
     `;
 
     document.querySelectorAll(".tab-item").forEach(item => {
-  item.addEventListener("click", () => {
-    const id = item.dataset.id;
-    const dispositivo = dispositivos.find(d => d.id === id);
-    if (dispositivo) {
+  // En el event listener de los tabs del modal:
+item.addEventListener("click", () => {
+  const id = item.dataset.id;
+  const dispositivo = dispositivos.find(d => d.id === id);
+  
+  if (dispositivo) {
       document.querySelectorAll(".info-panel").forEach(p => p.style.display = "none");
       const panelEspecifico = document.getElementById(`info-panel-${dispositivo.id}`);
       panelEspecifico.style.display = "block";
       
-    panelEspecifico.innerHTML = dispositivo.obtenerInfoInteractiva();
-    const actualizarCola = () => {
-      if (panelEspecifico) {
-        panelEspecifico.innerHTML = dispositivo.obtenerInfoInteractiva();
-      }
-    };
-    dispositivo.actualizarUI = actualizarCola;
-    
+      // ✅ Mantener referencia al panel y método original
       dispositivo.panelUI = panelEspecifico;
-    }
-  });
+      const originalUpdate = dispositivo.actualizarUI.bind(dispositivo);
+      
+      // ✅ Actualizar ambos paneles (global y modal)
+      dispositivo.actualizarUI = function() {
+          originalUpdate();
+          if (panelEspecifico && panelEspecifico.style.display === "block") {
+              panelEspecifico.innerHTML = this.obtenerInfoInteractiva();
+          }
+      };
+      
+      dispositivo.actualizarUI(); // Actualización inicial
+  }
+});
 });
     modal.classList.remove("hidden");
     closeButton.onclick = () => modal.classList.add("hidden");
