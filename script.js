@@ -5,6 +5,17 @@ let deviceCounter = 0;
 const devices = {};
 const connections = [];
 
+const deviceNameCounters = {
+  Teclado: 0,
+  Mouse: 0,
+  USB: 0,
+  Bocina: 0,
+  Monitor: 0,
+  Impresora: 0,
+  Computadora: 0
+};
+
+
 // DRAG & DROP y lógica de interacción
 document.querySelectorAll('.device').forEach(device => {
   device.addEventListener('dragstart', (e) => {
@@ -52,6 +63,9 @@ workspace.addEventListener('drop', (e) => {
     case "Computadora": nuevo = new Computadora(img.dataset.id, img); break;
     default: return;
   }
+
+  const nombreDispositivo = type.toLowerCase() + deviceNameCounters[type]++;
+  nuevo.nombre = nombreDispositivo;
 
   devices[img.dataset.id] = nuevo;
   
@@ -155,7 +169,7 @@ class Dispositivo {
     this.id = id;
     this.tipo = tipo;
     this.elemento = elemento;
-    this.nombre = `${this.constructor.name} ${id.split('-')[1]}`;
+    //this.nombre = `${this.constructor.name} ${id.split('-')[1]}`;
     this.conectadoA = [];
     this.voltaje = 0;
     this.anchoBanda = 0;
@@ -178,25 +192,25 @@ class Dispositivo {
   }
 
   actualizarUI() {
-    // Actualizar panel principal si existe
+    // Update global panel if it exists
     const panelGlobal = document.getElementById("info-panel");
     if (panelGlobal && this.panelUI === panelGlobal) {
         panelGlobal.innerHTML = this.obtenerInfoInteractiva();
     }
     
-    // Actualizar panel del modal si está activo
+    // Update modal panel if it is active
     if (this.panelUI && this.panelUI.style.display === "block") {
         this.panelUI.innerHTML = this.obtenerInfoInteractiva();
     }
     
-    // Restaurar textarea en teclados
+    // Restore textarea in keyboards
     if (this instanceof Teclado) {
         const textarea = this.panelUI?.querySelector('textarea');
         if (textarea) {
             textarea.oninput = () => handleTecladoInput(this.id, textarea.value);
         }
     }
-}  
+}
   
 
   obtenerInfoInteractiva() {
@@ -385,63 +399,79 @@ class Computadora extends Dispositivo {
     const modalBody = document.getElementById("modal-body");
     const closeButton = document.querySelector(".close-button");
 
+
     const dispositivos = this.conectadoA;
 
     let listaHTML = dispositivos.map((d, i) =>
-      `<li class="tab-item" data-id="${d.id}">${d.nombre}</li>`
+        `<li class="tab-item" data-id="${d.id}">${d.nombre}</li>`
     ).join("");
 
     const panelInfo = dispositivos.map(d => `
-      <div id="info-panel-${d.id}" class="info-panel" style="display:none; padding: 10px;"></div>
+        <div id="info-panel-${d.id}" class="info-panel" style="display:none; padding: 10px;"></div>
     `).join("");
-    
 
     modalBody.innerHTML = `
-      <div style="display:flex">
-        <ul class="tab-list" style="width: 40%; text-align:left; border-right: 1px solid #ccc; padding-right: 10px;">
-          ${listaHTML}
-        </ul>
-        <div style="width: 60%; padding-left: 10px;">
-          ${panelInfo}
-        </div>
+  <div style="margin-bottom:10px;">
+    <button id="btn-ver-tabla">Ver tabla de manejadores</button>
+  </div>
+  <div id="vista-tabs">
+    <div style="display:flex">
+      <ul class="tab-list" style="width: 40%; text-align:left; border-right: 1px solid #ccc; padding-right: 10px;">
+        ${listaHTML}
+      </ul>
+      <div style="width: 60%; padding-left: 10px;">
+        ${panelInfo}
       </div>
-    `;
+    </div>
+  </div>
+  <div id="vista-tabla" style="display: none;"></div>
+`;
+
+
 
     document.querySelectorAll(".tab-item").forEach(item => {
-  // En el event listener de los tabs del modal:
-item.addEventListener("click", () => {
-  const id = item.dataset.id;
-  const dispositivo = dispositivos.find(d => d.id === id);
-  
-  if (dispositivo) {
-      document.querySelectorAll(".info-panel").forEach(p => p.style.display = "none");
-      const panelEspecifico = document.getElementById(`info-panel-${dispositivo.id}`);
-      panelEspecifico.style.display = "block";
-      
-      // ✅ Mantener referencia al panel y método original
-      dispositivo.panelUI = panelEspecifico;
-      const originalUpdate = dispositivo.actualizarUI.bind(dispositivo);
-      
-      // ✅ Actualizar ambos paneles (global y modal)
-      dispositivo.actualizarUI = function() {
-          originalUpdate();
-          if (panelEspecifico && panelEspecifico.style.display === "block") {
-              panelEspecifico.innerHTML = this.obtenerInfoInteractiva();
-          }
-      };
-      
-      dispositivo.actualizarUI(); // Actualización inicial
-  }
-});
-});
+        item.addEventListener("click", () => {
+            const id = item.dataset.id;
+            const dispositivo = dispositivos.find(d => d.id === id);
+            
+            if (dispositivo) {
+                document.querySelectorAll(".info-panel").forEach(p => p.style.display = "none");
+                const panelEspecifico = document.getElementById(`info-panel-${dispositivo.id}`);
+                panelEspecifico.style.display = "block";
+                
+                // Maintain reference to the panel and original method
+                dispositivo.panelUI = panelEspecifico;
+                const originalUpdate = dispositivo.actualizarUI.bind(dispositivo);
+                
+                // Update both global and modal panels
+                dispositivo.actualizarUI = function() {
+                    originalUpdate();
+                    if (panelEspecifico && panelEspecifico.style.display === "block") {
+                        panelEspecifico.innerHTML = this.obtenerInfoInteractiva();
+                    }
+                };
+                
+                dispositivo.actualizarUI(); // Initial update
+            }
+        });
+    });
+
+    document.getElementById("btn-ver-tabla").addEventListener("click", () => {
+      const vistaTabla = document.getElementById("vista-tabla");
+      const vistaTabs = document.getElementById("vista-tabs");
+    
+      vistaTabs.style.display = "none";
+      vistaTabla.style.display = "block";
+      vistaTabla.innerHTML = generarTablaManejadoresHTML();
+    });
+    
     modal.classList.remove("hidden");
     closeButton.onclick = () => modal.classList.add("hidden");
     window.onclick = (e) => {
-      if (e.target === modal) modal.classList.add("hidden");
+        if (e.target === modal) modal.classList.add("hidden");
     };
-  }
 }
-
+}
 // Funciones para interacción
 function handleTecladoInput(id, value) {
   const dispositivo = devices[id];
@@ -484,5 +514,93 @@ function handleVolumen(id, valor) {
     dispositivo.ajustarVolumen(valor);
   }
 }
+
+function mostrarTablaManejadores() {
+  const modal = document.getElementById("modal-monitor");
+  const modalBody = document.getElementById("modal-body");
+  const closeButton = document.querySelector(".close-button");
+
+  // Generar tabla HTML
+  let tablaHTML = `
+    <h2>Tabla de Manejadores de Dispositivos</h2>
+    <table style="width:100%; border-collapse: collapse;" border="1">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Conectado a</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  Object.values(devices).forEach(d => {
+    const conectados = d.conectadoA.map(c => c.nombre).join(", ") || "Ninguno";
+    tablaHTML += `
+      <tr>
+        <td>${d.id}</td>
+        <td>${d.nombre}</td>
+        <td>${d.tipo}</td>
+        <td>${conectados}</td>
+      </tr>
+    `;
+  });
+
+  tablaHTML += `
+      </tbody>
+    </table>
+  `;
+
+  modalBody.innerHTML = tablaHTML;
+
+  
+  modal.classList.remove("hidden");
+
+  closeButton.onclick = () => modal.classList.add("hidden");
+  window.onclick = (e) => {
+    if (e.target === modal) modal.classList.add("hidden");
+  };
+}
+
+function generarTablaManejadoresHTML() {
+  let tablaHTML = `
+    <h2>Tabla de Manejadores de Dispositivos</h2>
+    <button onclick="regresarAVistaTabs()">Regresar a pestañas</button>
+    <table style="width:100%; border-collapse: collapse;" border="1">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>Nombre</th>
+          <th>Tipo</th>
+          <th>Conectado a</th>
+        </tr>
+      </thead>
+      <tbody>
+  `;
+
+  Object.values(devices).forEach(d => {
+    const conectados = d.conectadoA.map(c => c.nombre).join(", ") || "Ninguno";
+    tablaHTML += `
+      <tr>
+        <td>${d.id}</td>
+        <td>${d.nombre}</td>
+        <td>${d.tipo}</td>
+        <td>${conectados}</td>
+      </tr>
+    `;
+  });
+
+  tablaHTML += `
+      </tbody>
+    </table>
+  `;
+  return tablaHTML;
+}
+function regresarAVistaTabs() {
+  document.getElementById("vista-tabla").style.display = "none";
+  document.getElementById("vista-tabs").style.display = "block";
+}
+
 
 
