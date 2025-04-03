@@ -127,9 +127,9 @@ workspace.addEventListener("drop", (e) => {
             d.conectadoA.forEach((salida) => {
               if (salida instanceof Monitor) {
                 salida.agregarOperacion(`Mostrar en pantalla: "${texto}"`);
-              } else if (salida instanceof Impresora) {
-                salida.agregarOperacion(`Imprimir: "${texto}"`);
-              }
+              } //else if (salida instanceof Impresora) {
+               // salida.agregarOperacion(`Imprimir: "${texto}"`); //Esto hace que se imprima algo cuando se cone
+              //}
             });
           }
         });
@@ -177,6 +177,21 @@ function drawLine(fromEl, toEl) {
   svg.appendChild(line);
 }
 
+function eliminarLineaConexion(id1, id2) {
+  const index = connections.findIndex(
+    (conn) =>
+      (conn.from === id1 && conn.to === id2) ||
+      (conn.from === id2 && conn.to === id1)
+  );
+
+  if (index !== -1) {
+    const { line } = connections[index];
+    svg.removeChild(line);
+    connections.splice(index, 1);
+  }
+}
+
+
 class Dispositivo {
   puedeConectarA(otroDispositivo) {
     const conexionesValidas = {
@@ -212,6 +227,8 @@ class Dispositivo {
     this.panelUI = null;
     this.colaOperaciones = [];
     this.procesando = false;
+    this.nombre = this.nombre || `${this.constructor.name}-${this.id}`;
+
   }
 
   inicializarConsumo() {
@@ -223,7 +240,16 @@ class Dispositivo {
     if (!this.conectadoA.includes(objetivo)) {
       this.conectadoA.push(objetivo);
     }
+  
+    // ✅ Si este dispositivo es un USB, al reconectarse se "reactiva"
+    if (this instanceof USB) {
+      this.expulsado = false;
+      this.colaOperaciones = [];     // 🧹 Limpia operaciones visuales
+      this.actualizarUI();
+    }
   }
+  
+  
 
   actualizarUI() {
     const panelGlobal = document.getElementById("info-panel");
@@ -232,9 +258,11 @@ class Dispositivo {
     }
     
   
-    if (this.panelUI && this.panelUI.style.display === "block") {
+    if (this.panelUI && this.panelUI.style.display === "block" && !this.panelUI.classList.contains("rendered")) {
       this.panelUI.innerHTML = this.obtenerInfoInteractiva();
+      this.panelUI.classList.add("rendered");
     }
+    
   
     if (this instanceof Teclado) {
       const textarea = this.panelUI?.querySelector("textarea");
@@ -243,21 +271,43 @@ class Dispositivo {
       }
     }
 
+    // Re-vincular el evento del slider si es Bocina
+    if (this instanceof Bocina) {
+      const slider = panelEspecifico.querySelector("input[type='range']");
+      if (slider) {
+        slider.addEventListener("input", () => handleVolumen(this.id, slider.value));
+      }
+    }
+
+
     if (this instanceof USB) {
       const btn = document.getElementById(`btn-leer-${this.id}`);
       if (btn) {
         this.botonLeer = btn;
-        if (this.enUso) {
-          this.botonLeer.disabled = true;
-          if (typeof this.tiempoLecturaRestante === "number" && this.tiempoLecturaRestante > 0) {
-            this.botonLeer.textContent = `Leyendo (${this.tiempoLecturaRestante}s)`;
-          }
+        if (this.expulsado) {
+          btn.disabled = true;
+          btn.textContent = "USB expulsado";
+        } else if (this.enUso) {
+          btn.disabled = true;
+          const t = this.tiempoLecturaRestante ?? 10;
+          btn.textContent = `Leyendo (${t}s)`;
         } else {
-          this.botonLeer.disabled = false;
-          this.botonLeer.textContent = "Leer USB";
+          btn.disabled = false;
+          btn.textContent = "Leer USB";
         }
       }
     }
+    
+    
+
+    // Re-vincular botones si es Impresora
+if (this instanceof Impresora) {
+  const imprimirBtn = document.getElementById(`btn-imprimir-${this.id}`);
+  const cancelarBtn = document.getElementById(`btn-cancelar-${this.id}`);
+
+  if (imprimirBtn) imprimirBtn.addEventListener("click", () => this.imprimir());
+  if (cancelarBtn) cancelarBtn.addEventListener("click", () => this.cancelarImpresion());
+}
     
     
     
@@ -411,6 +461,13 @@ class Mouse extends Dispositivo {
     super(id, "Entrada", elemento);
   }
 
+  agregarOperacion(mensaje) {
+    this.colaOperaciones = []; // Limpiar anteriores si quieres solo mostrar el último
+    this.colaOperaciones.push(mensaje);
+    this.actualizarUI(); // Mostrar al instante
+  }
+  
+
   obtenerInfoInteractiva() {
     return (
       super.obtenerInfoInteractiva() +
@@ -418,10 +475,13 @@ class Mouse extends Dispositivo {
       <div style='margin-top:10px;'>
         <button onclick='handleMouseClick("${this.id}", "izquierdo")'>Click Izquierdo</button>
         <button onclick='handleMouseClick("${this.id}", "derecho")'>Click Derecho</button>
+        <button onclick='handleMouseClick("${this.id}", "doble")'>Doble Click</button>
+        <button onclick='handleMouseClick("${this.id}", "mover")'>Mover Mouse</button>
       </div>
     `
     );
   }
+  
 
   voltajeReposo() {
     return 0.07;
@@ -431,72 +491,127 @@ class Mouse extends Dispositivo {
   }
 
   click(tipo) {
-    this.voltaje = 0.4;
-    this.anchoBanda = 0.4;
+    if (tipo === "mover") {
+      this.voltaje = 0.2;
+      this.anchoBanda = 0.2;
+      this.agregarOperacion("🖱️ Movimiento detectado");
+      interrupcionesSO.push({
+        id: Date.now(),
+        dispositivo: this.nombre,
+        tipo: "Movimiento del mouse",
+        prioridad: 3,
+        estado: "Pendiente"
+      });
+    } else {
+      this.voltaje = 0.4;
+      this.anchoBanda = 0.4;
+      const texto = tipo === "doble" ? "🖱️ Doble Click" : `🖱️ Click ${tipo}`;
+      const tipoInterrupcion = tipo === "doble" ? "Doble click" : `Click ${tipo}`;
+      this.agregarOperacion(texto);
+      interrupcionesSO.push({
+        id: Date.now(),
+        dispositivo: this.nombre,
+        tipo: tipoInterrupcion,
+        prioridad: 3,
+        estado: "Pendiente"
+      });
+    }
+  
     this.actualizarUI();
     this.elemento.classList.add("active");
     clearTimeout(this.timerReposo);
     this.timerReposo = setTimeout(() => this.reposo(), 1000);
   }
+  
+  
 }
 
 class USB extends Dispositivo {
   constructor(id, elemento) {
     super(id, "Entrada", elemento);
-    this.enUso = false; // Initialize the 'enUso' property
+    this.enUso = false;
     this.intervaloLectura = null;
     this.botonLeer = null;
+    this.expulsado = false; // ✅ Nuevo estado
   }
+  
+
+  agregarOperacion(operacion) {
+    // Ignora la cola normal del padre
+    this.colaOperaciones.push(operacion);
+    this.actualizarUI(); // Mostrar al instante
+  }
+  
 
   leer() {
+    if (this.expulsado) {
+      this.agregarOperacion("❌ El USB ha sido expulsado.");
+      return;
+    }
+
     if (this.enUso) {
       this.agregarOperacion("❌ El USB ya está en uso.");
       return;
     }
+
+    interrupcionesSO.push({
+      id: Date.now(),
+      dispositivo: this.nombre,
+      tipo: "Lectura iniciada",
+      prioridad: 2,
+      estado: "Pendiente"
+    });
+    
   
     this.enUso = true;
-    this.tiempoLecturaRestante = 10; // inicia contador
-    this.agregarOperacion("🔄 Leyendo datos desde el USB...");
+    this.tiempoLecturaRestante = 10;
   
     this.voltaje = 0.3;
     this.anchoBanda = 0.5;
-    this.actualizarUI();
     this.elemento.classList.add("active");
   
+    // Mostrar primero operación
+    this.colaOperaciones.push("🔄 Leyendo datos desde el USB...");
+    this.actualizarUI();
+  
+    // ⏱ Iniciar temporizador visible
     this.intervaloLectura = setInterval(() => {
       this.tiempoLecturaRestante--;
-      this.actualizarUI(); // Esto actualiza el texto del botón
+      this.actualizarUI();
+  
+      // Actualiza texto del botón directamente (por si no se renderiza desde UI)
+      if (this.botonLeer) {
+        this.botonLeer.textContent = `Leyendo (${this.tiempoLecturaRestante}s)`;
+      }
     }, 1000);
   
     setTimeout(() => {
       clearInterval(this.intervaloLectura);
       this.intervaloLectura = null;
       this.enUso = false;
-      this.tiempoLecturaRestante = 0; // permite que el botón muestre "Leyendo (0s)" antes de reiniciarse
-  
+      this.tiempoLecturaRestante = 0;
+    
+      // 🧹 Limpiar operaciones anteriores
+      this.colaOperaciones = [];
+    
       this.agregarOperacion("✅ Lectura completada.");
       this.reposo();
       this.actualizarUI();
-    }, 10000);
-
-    if (this.botonLeer) {
-      this.botonLeer.disabled = false;
-      this.botonLeer.textContent = "Leer USB";
-    }
     
+      interrupcionesSO.push({
+        id: Date.now(),
+        dispositivo: this.nombre,
+        tipo: "Lectura completada",
+        prioridad: 2,
+        estado: "Pendiente"
+      });
+    }, 10000);
+    
+
   }
   
   
 
-  abrirArchivo() {
-    this.enUso = true;
-    console.log("Archivo abierto. USB ahora está en uso.");
-  }
-
-  cerrarArchivo() {
-    this.enUso = false; // Mark the USB as not in use when closing the file
-    console.log("Archivo cerrado. USB ya no está en uso.");
-  }
 
   expulsar() {
     if (this.enUso) {
@@ -506,9 +621,32 @@ class USB extends Dispositivo {
     }
   
     this.agregarOperacion("✅ USB expulsado correctamente.");
+    this.expulsado = true; // ✅ marcar como expulsado
+    this.actualizarUI();   // actualiza el botón
+
+    // ❌ Desconectar del dispositivo conectado (normalmente la computadora)
+    if (this.conectadoA.length > 0) {
+      const objetivo = this.conectadoA[0];
+
+      // Quitar conexiones lógicas en ambos sentidos
+      this.conectadoA = this.conectadoA.filter((d) => d !== objetivo);
+      objetivo.conectadoA = objetivo.conectadoA.filter((d) => d !== this);
+
+      // Quitar línea SVG visual
+      eliminarLineaConexion(this.id, objetivo.id);
+    }
+
+
     this.voltaje = 0.1;
     this.anchoBanda = 0.1;
     this.actualizarUI(); // ✅ Solo si no está en uso
+
+    const btnLeer = document.getElementById(`btn-leer-${this.id}`);
+    if (btnLeer) {
+    btnLeer.disabled = true;
+    btnLeer.textContent = "USB expulsado";
+}
+
   }
   
   
@@ -534,11 +672,13 @@ class Bocina extends Dispositivo {
       super.obtenerInfoInteractiva() +
       `
       <div style='margin-top:10px;'>
-        Volumen: <input type='range' min='0' max='100' value='50' onchange='handleVolumen("${this.id}", this.value)'>
+        Volumen: <input type='range' min='0' max='100' value='50' 
+          oninput='handleVolumen("${this.id}", this.value)'>
       </div>
-    `
+      `
     );
   }
+  
 
   voltajeReposo() {
     return 0.1;
@@ -549,13 +689,38 @@ class Bocina extends Dispositivo {
 
   ajustarVolumen(valor) {
     const v = parseInt(valor);
+  
     this.voltaje = 0.1 + (v / 100) * 1.4;
     this.anchoBanda = 0.1 + (v / 100) * 1.9;
-    this.actualizarUI();
+  
+    this.actualizarValoresSimples();
+  
     this.elemento.classList.add("active");
     clearTimeout(this.timerReposo);
     this.timerReposo = setTimeout(() => this.reposo(), 2000);
+  
+    this.colaOperaciones.push(`🔊 Volumen ajustado a ${v}%`);
+    this.actualizarUI();
+  
+    interrupcionesSO.push({
+      id: Date.now(),
+      dispositivo: this.nombre,
+      tipo: `Ajuste de volumen a ${v}`,
+      prioridad: 3,
+      estado: "Pendiente"
+    });
+  
+    const panelInterrupciones = document.getElementById("vista-interrupciones");
+    if (panelInterrupciones && panelInterrupciones.style.display === "block") {
+      panelInterrupciones.innerHTML = generarTablaInterruptoresHTML();
+
+      this.actualizarValoresSimples();
+
+    }
   }
+  
+  
+  
 }
 
 class Monitor extends Dispositivo {
@@ -573,14 +738,120 @@ class Monitor extends Dispositivo {
 class Impresora extends Dispositivo {
   constructor(id, elemento) {
     super(id, "Salida", elemento);
+    this.imprimiendo = false;
+    this.timerImpresion = null;
   }
+
+  agregarOperacion(mensaje) {
+    this.colaOperaciones.push(mensaje);
+    this.actualizarUI(); // Mostrar de inmediato sin disparar procesarCola()
+  }
+
   voltajeReposo() {
     return 0.5;
   }
+
   anchoBandaReposo() {
     return 0.8;
   }
+
+  obtenerInfoInteractiva() {
+    return (
+      super.obtenerInfoInteractiva() +
+      `
+      <div style="margin-top:10px;">
+        <button id="btn-imprimir-${this.id}">Imprimir</button>
+        <button id="btn-cancelar-${this.id}">Cancelar impresión</button>
+      </div>
+      `
+    );
+  }
+
+  imprimir(texto = "Documento genérico") {
+    if (this.imprimiendo) {
+      this.agregarOperacion("❌ Ya se está imprimiendo algo.");
+      return;
+    }
+    if (Math.random() < 0.1) {
+      this.agregarOperacion("❌ Error: Papel atascado.");
+      interrupcionesSO.push({
+        id: Date.now(),
+        dispositivo: this.nombre,
+        tipo: "Error de papel",
+        prioridad: 1,
+        estado: "Pendiente"
+      });
+      this.imprimiendo = false;
+      this.reposo();
+      return;
+    }
+    this.imprimiendo = true;
+    this.voltaje = 3;
+    this.anchoBanda = 1;
+    this.agregarOperacion(`🖨️ Imprimiendo: "${texto}"...`);
+    this.elemento.classList.add("active");
+    this.actualizarUI();
+
+    this.timerImpresion = setTimeout(() => {
+      this.timerImpresion = setTimeout(() => {
+        this.imprimiendo = false;
+        this.timerImpresion = null;
+      
+        // 🧹 Limpiar operaciones anteriores
+        this.colaOperaciones = [];
+      
+        this.agregarOperacion("✅ Impresión completada.");
+        this.reposo();
+        this.actualizarUI();
+      
+        interrupcionesSO.push({
+          id: Date.now(),
+          dispositivo: this.nombre,
+          tipo: "Impresión completada",
+          prioridad: 2,
+          estado: "Pendiente"
+        });
+      }, 5000);
+      
+    }, 5000);
+
+    interrupcionesSO.push({
+      id: Date.now(),
+      dispositivo: this.nombre,
+      tipo: "Impresión completada",
+      prioridad: 2,
+      estado: "Pendiente"
+    });
+    
+  }
+
+  cancelarImpresion() {
+    if (!this.imprimiendo) {
+      this.agregarOperacion("ℹ️ No hay ninguna impresión en curso.");
+      return;
+    }
+
+    const confirmacion = confirm("¿Estás seguro de que deseas cancelar la impresión?");
+    if (confirmacion) {
+      if (confirmacion) {
+        clearTimeout(this.timerImpresion);
+        this.imprimiendo = false;
+        this.timerImpresion = null;
+      
+        // 🧹 Limpiar operaciones anteriores
+        this.colaOperaciones = [];
+      
+        this.agregarOperacion("❌ Impresión cancelada.");
+        this.reposo();
+        this.actualizarUI();
+      }
+      
+    } else {
+      this.agregarOperacion("ℹ️ La impresión continúa.");
+    }
+  }
 }
+
 
 class Computadora extends Dispositivo {
   constructor(id, elemento) {
@@ -650,6 +921,8 @@ class Computadora extends Dispositivo {
             originalUpdate();
             if (panelEspecifico && panelEspecifico.style.display === "block") {
               panelEspecifico.innerHTML = this.obtenerInfoInteractiva();
+              this.actualizarValoresSimples(); // ✅ Esto refresca el voltaje/banda del modal
+
               if (this instanceof Teclado) {
                 const textarea = panelEspecifico.querySelector("textarea");
                 if (textarea) {
@@ -662,15 +935,58 @@ class Computadora extends Dispositivo {
               if (this instanceof USB) {
                 const leerBtn = document.getElementById(`btn-leer-${this.id}`);
                 const expulsarBtn = document.getElementById(`btn-expulsar-${this.id}`);
-          
+
                 if (leerBtn) leerBtn.addEventListener("click", () => this.leer());
                 if (expulsarBtn) expulsarBtn.addEventListener("click", () => this.expulsar());
               }
+
+              // Re-vincular el evento del slider si es Bocina
+              if (this instanceof Bocina) {
+                const slider = panelEspecifico.querySelector("input[type='range']");
+                if (slider) {
+                  slider.addEventListener("input", () => handleVolumen(this.id, slider.value));
+                }
+              }
+
+
+              // Re-vincular botones si es Impresora
+              if (this instanceof Impresora) {
+                const imprimirBtn = document.getElementById(`btn-imprimir-${this.id}`);
+                const cancelarBtn = document.getElementById(`btn-cancelar-${this.id}`);
+
+                if (imprimirBtn) imprimirBtn.addEventListener("click", () => this.imprimir());
+                if (cancelarBtn)
+                  cancelarBtn.addEventListener("click", () => this.cancelarImpresion());
+              }
+
+              // Re-vincular botones si es Mouse
+              if (this instanceof Mouse) {
+                const btnIzq = document.querySelector(`button[onclick*='${this.id}'][onclick*='izquierdo']`);
+                const btnDer = document.querySelector(`button[onclick*='${this.id}'][onclick*='derecho']`);
+                const btnDoble = document.querySelector(`button[onclick*='${this.id}'][onclick*='doble']`);
+                const btnMover = document.querySelector(`button[onclick*='${this.id}'][onclick*='mover']`);
+
+                if (btnIzq) btnIzq.addEventListener("click", () => this.click("izquierdo"));
+                if (btnDer) btnDer.addEventListener("click", () => this.click("derecho"));
+                if (btnDoble) btnDoble.addEventListener("click", () => this.click("doble"));
+                if (btnMover) btnMover.addEventListener("click", () => this.click("mover"));
+}
+
+
             }
           };
           
 
           dispositivo.actualizarUI(); // Initial update
+
+          if (dispositivo instanceof Impresora) {
+            const imprimirBtn = document.getElementById(`btn-imprimir-${dispositivo.id}`);
+            const cancelarBtn = document.getElementById(`btn-cancelar-${dispositivo.id}`);
+          
+            if (imprimirBtn) imprimirBtn.addEventListener("click", () => dispositivo.imprimir());
+            if (cancelarBtn) cancelarBtn.addEventListener("click", () => dispositivo.cancelarImpresion());
+          }
+          
           // Vincula eventos si es un USB
           if (dispositivo instanceof USB) {
             const leerBtn = document.getElementById(`btn-leer-${dispositivo.id}`);
@@ -756,9 +1072,16 @@ function handleTecladoInput(id, value) {
 function handleMouseClick(id, tipo) {
   const dispositivo = devices[id];
   if (dispositivo instanceof Mouse) {
+    // Asegura que se abra la interfaz si no está activa
+    const panel = document.getElementById("info-panel");
+    panel.style.display = "block";
+    dispositivo.panelUI = panel;
+    dispositivo.actualizarUI();
+
     dispositivo.click(tipo);
   }
 }
+
 
 function handleUSBRead(id) {
   const dispositivo = devices[id];
